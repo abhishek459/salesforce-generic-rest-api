@@ -84,7 +84,15 @@ public with sharing class SObjectResourceHandler {
             fieldMap.get(lowerCaseFieldName).getDescribe().isUpdateable() ||
             fieldMap.get(lowerCaseFieldName).getDescribe().isCreateable()
           ) {
-            sObj.put(fieldName, recordMap.get(fieldName));
+            Object rawValue = recordMap.get(fieldName);
+            Schema.SObjectField fieldToken = fieldMap.get(lowerCaseFieldName);
+
+            // Convert the value to the correct data type using the helper method
+            Object correctlyTypedValue = convertValueToFieldType(
+              rawValue,
+              fieldToken
+            );
+            sObj.put(fieldName, correctlyTypedValue);
           }
         } else if (!childRelationshipsMap.containsKey(lowerCaseFieldName)) {
           // If the key is not a valid field and not a child relationship, it's an error.
@@ -286,11 +294,74 @@ public with sharing class SObjectResourceHandler {
         );
         // Check if the field is valid and if user has create permission (FLS)
         if (fieldToken != null && fieldToken.getDescribe().isCreateable()) {
-          newChild.put(childFieldName, childMap.get(childFieldName));
+          Object rawValue = childMap.get(childFieldName);
+
+          Object correctlyTypedValue = convertValueToFieldType(
+            rawValue,
+            fieldToken
+          );
+
+          newChild.put(childFieldName, correctlyTypedValue);
         }
       }
       childSObjectList.add(newChild);
     }
     return childSObjectList;
+  }
+
+  /**
+   * @description Converts a raw value from the JSON payload to the correct Apex
+   * data type based on the target field's schema definition.
+   * @param value The raw value (e.g., String, Decimal).
+   * @param fieldToken The schema token for the target SObject field.
+   * @return An Object with the correctly typed value.
+   */
+  private static Object convertValueToFieldType(
+    Object value,
+    Schema.SObjectField fieldToken
+  ) {
+    if (value == null) {
+      return null;
+    }
+
+    Schema.DisplayType fieldType = fieldToken.getDescribe().getType();
+
+    try {
+      switch on fieldType {
+        when DATE {
+          return Date.valueOf(String.valueOf(value));
+        }
+        when DATETIME {
+          return Datetime.valueOf(String.valueOf(value));
+        }
+        when BOOLEAN {
+          return Boolean.valueOf(String.valueOf(value));
+        }
+        when INTEGER {
+          return ((Decimal) value).intValue();
+        }
+        when LONG {
+          return ((Decimal) value).longValue();
+        }
+        when DOUBLE {
+          return ((Decimal) value).doubleValue();
+        }
+        when CURRENCY, PERCENT {
+          return (Decimal) value;
+        }
+        when else {
+          return value;
+        }
+      }
+    } catch (Exception e) {
+      throw new ApiGatewayException(
+        'Invalid data format for field \'' +
+          fieldToken.getDescribe().getName() +
+          '\'. Could not convert value \'' +
+          String.valueOf(value) +
+          '\' to ' +
+          fieldType
+      );
+    }
   }
 }
