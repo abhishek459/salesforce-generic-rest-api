@@ -29,7 +29,7 @@ global with sharing class SObjectResourceModels {
       this.id = res.getId();
       this.externalId = externalId;
       this.success = res.isSuccess();
-      this.created = res.isCreated();
+      this.created = res.isSuccess() && res.isCreated();
       this.errors = new List<String>();
       if (!res.isSuccess()) {
         for (Database.Error err : res.getErrors()) {
